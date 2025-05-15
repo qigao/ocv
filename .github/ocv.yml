@@ -1,3 +1,4 @@
+ 
 name: Build and Upload OpenCV Artifacts
 
 on:
@@ -41,28 +42,29 @@ jobs:
         opencv-contrib: true
         cmake-args: '-DBUILD_EXAMPLES=OFF -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF'
 
-    # Install OpenCV on Windows
+    # Install OpenCV on Windows with MSVC 2022
     - name: Setup OpenCV (Windows)
       if: matrix.os == 'windows-latest' && steps.cache-opencv.outputs.cache-hit != 'true'
-      shell: bash
+      shell: cmd
       run: |
-        mkdir -p opencv-install
+        mkdir opencv-install
         cd opencv-install
         git clone --depth 1 --branch ${{ matrix.opencv-version }} https://github.com/opencv/opencv.git
         git clone --depth 1 --branch ${{ matrix.opencv-version }} https://github.com/opencv/opencv_contrib.git
-        mkdir build && cd build
-        cmake -G "MinGW Makefiles" \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_EXAMPLES=OFF \
-          -DBUILD_TESTS=OFF \
-          -DBUILD_PERF_TESTS=OFF \
-          -DOPENCV_EXTRA_MODULES_PATH=../opencv_contrib/modules \
-          -DCMAKE_INSTALL_PREFIX=../install \
+        mkdir build
+        cd build
+        call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        cmake -G "Visual Studio 17 2022" -A x64 ^
+          -DCMAKE_BUILD_TYPE=Release ^
+          -DBUILD_EXAMPLES=OFF ^
+          -DBUILD_TESTS=OFF ^
+          -DBUILD_PERF_TESTS=OFF ^
+          -DOPENCV_EXTRA_MODULES_PATH=../opencv_contrib/modules ^
+          -DCMAKE_INSTALL_PREFIX=../install ^
           ../opencv
-        mingw32-make -j$(nproc)
-        mingw32-make install
+        msbuild INSTALL.vcxproj /p:Configuration=Release /m
         cd ../..
-        mv opencv-install/install C:/opencv-install
+        move opencv-install\install C:\opencv-install
 
     # Set environment variables for OpenCV
     - name: Set OpenCV Environment Variables
@@ -82,7 +84,7 @@ jobs:
         if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
           pkg-config --modversion opencv4
         else
-          dir C:/opencv-install/bin
+          dir C:\opencv-install\bin
         fi
 
     # Package build results
