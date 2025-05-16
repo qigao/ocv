@@ -89,9 +89,9 @@ jobs:
           echo "Installation directory opencv-install\install\x64\vc17\bin not found"
           exit /b 1
         )
-        dir opencv-install\install\lib\cmake\opencv4
-        if not exist opencv-install\install\lib\cmake\opencv4\OpenCVConfig.cmake (
-          echo "OpenCVConfig.cmake not found in opencv-install\install\lib\cmake\opencv4"
+        dir opencv-install\install\x64\vc17\lib\
+        if not exist opencv-install\install\x64\vc17\lib\OpenCVConfig.cmake (
+          echo "OpenCVConfig.cmake not found in opencv-install\installx64\vc17\lib"
           exit /b 1
         )
 
