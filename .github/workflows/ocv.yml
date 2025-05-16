@@ -154,13 +154,14 @@ jobs:
 
     # Verify OpenCV installation
     - name: Verify OpenCV Installation
-      shell: ${{ matrix.os == 'ubuntu-latest' && 'bash' || 'powershell' }}
+      shell: bash
       run: |
-        if ("${{ matrix.os }}" -eq "ubuntu-latest") {
+        if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+          export PKG_CONFIG_PATH=$(pwd)/opencv-install/install/lib/pkgconfig:$PKG_CONFIG_PATH
           pkg-config --modversion opencv4
-        } else {
-          dir ./opencv-install/install/bin
-        }
+        else
+          dir opencv-install/install/bin
+        fi
 
     # Package OpenCV artifacts
     - name: Package OpenCV Artifacts
