@@ -5,7 +5,7 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
-  workflow_dispatch: # Allows manual triggering
+  workflow_dispatch:
 
 jobs:
   build:
@@ -13,14 +13,22 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        opencv-version: ['4.11.0'] # Specify desired OpenCV version
+        opencv-version: ['4.11.0']
       fail-fast: false
 
     steps:
+    # Debug: Print environment
+    - name: Debug Info
+      run: |
+        echo "Runner OS: ${{ matrix.os }}"
+        echo "OpenCV Version: ${{ matrix.opencv-version }}"
+        echo "Event: ${{ github.event_name }}"
+        echo "Branch: ${{ github.ref_name }}"
+
     # Checkout the repository
     - uses: actions/checkout@v4
 
-    # Cache OpenCV to avoid rebuilding
+    # Cache OpenCV
     - name: Cache OpenCV
       id: cache-opencv
       uses: actions/cache@v4
@@ -29,23 +37,54 @@ jobs:
           ./opencv-install
           ${{ runner.os == 'Windows' && 'C:/opencv-install' || '' }}
         key: ${{ runner.os }}-opencv-${{ matrix.opencv-version }}
-        restore-keys: ${{ runner.os }}-opencv-
 
-    # Install OpenCV on Linux
+    # Install OpenCV on Linux (Manual Setup)
     - name: Setup OpenCV (Linux)
-      if: matrix.os == 'ubuntu-latest' && steps.cache-opencv.outputs.cache-hit != 'true'
-      uses: Dovyski/setup-opencv-action@v1.1
-      with:
-        opencv-version: ${{ matrix.opencv-version }}
-        install-deps: true
-        opencv-contrib: true
-        cmake-args: '-DBUILD_EXAMPLES=OFF -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF'
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        # Update package lists and install dependencies
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          git \
+          libgtk2.0-dev \
+          pkg-config \
+          libavcodec-dev \
+          libavformat-dev \
+          libswscale-dev \
+          libtbb2 \
+          libtbb-dev \
+          libjpeg-dev \
+          libpng-dev \
+          libtiff-dev \
+          libdc1394-dev
+        # Clone OpenCV and opencv_contrib
+        mkdir -p opencv-install
+        cd opencv-install
+        git clone --depth 1 --branch ${{ matrix.opencv-version }} https://github.com/opencv/opencv.git
+        git clone --depth 1 --branch ${{ matrix.opencv-version }} https://github.com/opencv/opencv_contrib.git
+        # Build and install OpenCV
+        mkdir -p build
+        cd build
+        cmake \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_EXAMPLES=OFF \
+          -DBUILD_TESTS=OFF \
+          -DBUILD_PERF_TESTS=OFF \
+          -DOPENCV_EXTRA_MODULES_PATH=../opencv_contrib/modules \
+          -DCMAKE_INSTALL_PREFIX=/usr/local \
+          ../opencv
+        make -j$(nproc)
+        sudo make install
+        cd ../..
 
     # Install OpenCV on Windows with MSVC 2022
     - name: Setup OpenCV (Windows)
-      if: matrix.os == 'windows-latest' && steps.cache-opencv.outputs.cache-hit != 'true'
+      if: matrix.os == 'windows-latest'
       shell: cmd
       run: |
+        echo "Starting Windows build"
         mkdir opencv-install
         cd opencv-install
         git clone --depth 1 --branch ${{ matrix.opencv-version }} https://github.com/opencv/opencv.git
@@ -86,7 +125,7 @@ jobs:
           dir C:\opencv-install\bin
         fi
 
-    # Package build results
+    # Package and Upload
     - name: Package OpenCV Artifacts
       shell: bash
       run: |
@@ -95,8 +134,6 @@ jobs:
         else
           powershell -command "Compress-Archive -Path C:/opencv-install/* -DestinationPath opencv-${{ matrix.opencv-version }}-windows.zip"
         fi
-
-    # Upload artifacts
     - name: Upload OpenCV Artifacts
       uses: actions/upload-artifact@v4
       with:
