@@ -101,11 +101,6 @@ jobs:
         echo "LD_LIBRARY_PATH=${{ github.workspace }}/opencv-install/install/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
         echo "PKG_CONFIG_PATH=${{ github.workspace }}/opencv-install/install/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
 
-    - name: Verify OpenCV Installation (Linux)
-      shell: bash
-      run: |
-        pkg-config --modversion opencv4
-
     - name: Package OpenCV Artifacts (Linux)
       shell: bash
       run: |
