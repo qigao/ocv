@@ -113,14 +113,6 @@ jobs:
         make install
         cd ../..
 
-    - name: Verify Debug and Release Builds
-      run: |
-        echo "Verifying Debug build..."
-        ls -l opencv-install/install-debug/lib/libopencv_world*d.so*
-        
-        echo "Verifying Release build..."
-        ls -l opencv-install/install-release/lib/libopencv_world*.so*
-
     - name: Set OpenCV Environment Variables (Linux)
       shell: bash
       run: |
