@@ -137,8 +137,19 @@ jobs:
       run: |
         echo "Building and installing OpenCV"
         cd opencv-install\build
+        call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
         msbuild INSTALL.vcxproj /p:Configuration=Release /m
+        if errorlevel 1 (
+          echo "msbuild failed"
+          exit /b 1
+        )
         cd ../..
+        echo "Checking installation directory"
+        dir opencv-install\install
+        if not exist opencv-install\install\bin (
+          echo "Installation directory opencv-install\install\bin not found"
+          exit /b 1
+        )
 
     # Set environment variables for OpenCV
     - name: Set OpenCV Environment Variables
@@ -160,7 +171,7 @@ jobs:
           export PKG_CONFIG_PATH=$(pwd)/opencv-install/install/lib/pkgconfig:$PKG_CONFIG_PATH
           pkg-config --modversion opencv4
         else
-          dir opencv-install/install/bin
+          ls -l opencv-install/install/bin
         fi
 
     # Package OpenCV artifacts
