@@ -91,7 +91,7 @@ jobs:
         )
         dir opencv-install\install\x64\vc17\lib\
         if not exist opencv-install\install\x64\vc17\lib\OpenCVConfig.cmake (
-          echo "OpenCVConfig.cmake not found in opencv-install\installx64\vc17\lib"
+          echo "OpenCVConfig.cmake not found in opencv-install\install\x64\vc17\lib"
           exit /b 1
         )
 
@@ -100,7 +100,7 @@ jobs:
       shell: bash # Using bash for GITHUB_ENV and path manipulation consistency
       run: |
         # OpenCV_DIR should point to the directory containing OpenCVConfig.cmake
-        echo "OpenCV_DIR=${{ github.workspace }}/opencv-install/install/lib/cmake/opencv4" >> $GITHUB_ENV
+        echo "OpenCV_DIR=${{ github.workspace }}/opencv-install/install/x64/vc17/lib" >> $GITHUB_ENV
         # Convert slashes for PATH on Windows
         WIN_INSTALL_BIN_PATH=$(echo "${{ github.workspace }}/opencv-install/install/x64/vc17/bin" | sed 's/\//\\/g')
         echo "PATH=${WIN_INSTALL_BIN_PATH};$PATH" >> $GITHUB_ENV
