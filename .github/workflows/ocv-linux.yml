@@ -33,7 +33,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ./opencv-install
-        key: ${{ matrix.ubuntu-version }}-opencv-${{ matrix.opencv-version }}-world-ffmpeg
+        key: ${{ matrix.ubuntu-version }}-opencv-${{ matrix.opencv-version }}-world-ffmpeg-debug-release
 
     - name: Prepare OpenCV Build Directory (if cache miss)
       if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -69,8 +69,24 @@ jobs:
       if: steps.cache-opencv.outputs.cache-hit != 'true'
       working-directory: ./opencv-install
       run: |
-        mkdir -p build
-        cd build
+        # Configure Debug build
+        mkdir -p build-debug
+        cd build-debug
+        cmake \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DBUILD_EXAMPLES=OFF \
+          -DBUILD_opencv_world=ON \
+          -DWITH_FFMPEG=ON \
+          -DBUILD_TESTS=OFF \
+          -DBUILD_PERF_TESTS=OFF \
+          -DOPENCV_EXTRA_MODULES_PATH=../opencv_contrib/modules \
+          -DCMAKE_INSTALL_PREFIX=../install-debug \
+          ../opencv
+        cd ..
+        
+        # Configure Release build
+        mkdir -p build-release
+        cd build-release
         cmake \
           -DCMAKE_BUILD_TYPE=Release \
           -DBUILD_EXAMPLES=OFF \
@@ -79,20 +95,31 @@ jobs:
           -DBUILD_TESTS=OFF \
           -DBUILD_PERF_TESTS=OFF \
           -DOPENCV_EXTRA_MODULES_PATH=../opencv_contrib/modules \
-          -DCMAKE_INSTALL_PREFIX=../install \
+          -DCMAKE_INSTALL_PREFIX=../install-release \
           ../opencv
 
-    - name: Build OpenCV (Linux)
+    - name: Build and Install OpenCV (Linux)
       if: steps.cache-opencv.outputs.cache-hit != 'true'
-      working-directory: ./opencv-install/build
       run: |
+        # Build and install Debug
+        cd opencv-install/build-debug
         make -j$(nproc)
-
-    - name: Install OpenCV (Linux)
-      if: steps.cache-opencv.outputs.cache-hit != 'true'
-      working-directory: ./opencv-install/build
-      run: |
         make install
+        cd ../..
+        
+        # Build and install Release
+        cd opencv-install/build-release
+        make -j$(nproc)
+        make install
+        cd ../..
+
+    - name: Verify Debug and Release Builds
+      run: |
+        echo "Verifying Debug build..."
+        ls -l opencv-install/install-debug/lib/libopencv_world*d.so*
+        
+        echo "Verifying Release build..."
+        ls -l opencv-install/install-release/lib/libopencv_world*.so*
 
     - name: Set OpenCV Environment Variables (Linux)
       shell: bash
@@ -104,11 +131,17 @@ jobs:
     - name: Package OpenCV Artifacts (Linux)
       shell: bash
       run: |
-        tar -czf opencv-world-${{ matrix.opencv-version }}-${{ matrix.ubuntu-version }}.tar.gz -C opencv-install/install .
+        # Create a combined directory with both Debug and Release
+        mkdir -p opencv-install/install-combined
+        cp -r opencv-install/install-debug/* opencv-install/install-combined/
+        cp -r opencv-install/install-release/* opencv-install/install-combined/
+        
+        tar -czf opencv-world-${{ matrix.opencv-version }}-${{ matrix.ubuntu-version }}-debug-release.tar.gz \
+          -C opencv-install/install-combined .
 
     - name: Upload OpenCV Artifacts (Linux)
       uses: actions/upload-artifact@v4
       with:
-        name: opencv-world-${{ matrix.opencv-version }}-${{ matrix.ubuntu-version }}
-        path: opencv-world-${{ matrix.opencv-version }}-${{ matrix.ubuntu-version }}.tar.gz
+        name: opencv-world-${{ matrix.opencv-version }}-${{ matrix.ubuntu-version }}-debug-release
+        path: opencv-world-${{ matrix.opencv-version }}-${{ matrix.ubuntu-version }}-debug-release.tar.gz
         retention-days: 7
