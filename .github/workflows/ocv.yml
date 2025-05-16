@@ -35,7 +35,6 @@ jobs:
       with:
         path: |
           ./opencv-install
-          ${{ runner.os == 'Windows' && 'C:/opencv-install' || '' }}
         key: ${{ runner.os }}-opencv-${{ matrix.opencv-version }}
 
     # Install OpenCV on Linux (Manual Setup)
@@ -73,7 +72,7 @@ jobs:
           -DBUILD_TESTS=OFF \
           -DBUILD_PERF_TESTS=OFF \
           -DOPENCV_EXTRA_MODULES_PATH=../opencv_contrib/modules \
-          -DCMAKE_INSTALL_PREFIX=/usr/local \
+          -DCMAKE_INSTALL_PREFIX=../install \
           ../opencv
         make -j$(nproc)
         sudo make install
@@ -102,7 +101,6 @@ jobs:
           ../opencv
         msbuild INSTALL.vcxproj /p:Configuration=Release /m
         cd ../..
-        move opencv-install\install C:\opencv-install
 
     # Set environment variables for OpenCV
     - name: Set OpenCV Environment Variables
@@ -112,8 +110,8 @@ jobs:
           echo "OpenCV_DIR=/usr/local/lib/cmake/opencv4" >> $GITHUB_ENV
           echo "LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
         else
-          echo "OpenCV_DIR=C:/opencv-install/lib/cmake/opencv4" >> $GITHUB_ENV
-          echo "PATH=C:/opencv-install/bin;$PATH" >> $GITHUB_ENV
+          echo "OpenCV_DIR=$(pwd)/opencv-install/install/lib/cmake/opencv4" >> $GITHUB_ENV
+          echo "PATH=$(pwd)/opencv-install/install/bin;$PATH" >> $GITHUB_ENV
         fi
 
     # Verify OpenCV installation
@@ -122,7 +120,7 @@ jobs:
         if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
           pkg-config --modversion opencv4
         else
-          dir C:\opencv-install\bin
+          dir opencv-install\install\bin
         fi
 
     # Package and Upload
@@ -132,7 +130,7 @@ jobs:
         if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
           tar -czf opencv-${{ matrix.opencv-version }}-linux.tar.gz -C /usr/local .
         else
-          powershell -command "Compress-Archive -Path C:/opencv-install/* -DestinationPath opencv-${{ matrix.opencv-version }}-windows.zip"
+          powershell -command "Compress-Archive -Path ./opencv-install/install/* -DestinationPath opencv-${{ matrix.opencv-version }}-windows.zip"
         fi
     - name: Upload OpenCV Artifacts
       uses: actions/upload-artifact@v4
