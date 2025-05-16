@@ -1,0 +1,144 @@
+name: Build and Upload OpenCV World with FFmpeg Artifacts (Windows)
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        opencv-version: ['4.11.0'] # You can add more versions here
+      fail-fast: false
+
+    steps:
+     
+    - name: Debug Info
+      run: |
+        echo "Runner OS: ${{ runner.os }}"
+        echo "OpenCV Version: ${{ matrix.opencv-version }}"
+        echo "Event: ${{ github.event_name }}"
+        echo "Branch: ${{ github.ref_name }}"
+
+     
+    - uses: actions/checkout@v4
+
+    - name: Install FFmpeg using vcpkg
+      shell: cmd
+      run: |
+        git clone https://github.com/Microsoft/vcpkg.git
+        cd vcpkg
+        bootstrap-vcpkg.bat
+        vcpkg integrate install
+        vcpkg install ffmpeg:x64-windows
+        echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $GITHUB_ENV
+        cd ..
+
+     
+    - name: Cache OpenCV (Windows)
+      id: cache-opencv
+      uses: actions/cache@v4
+      with:
+        path: ./opencv-install
+        key: ${{ runner.os }}-opencv-${{ matrix.opencv-version }}-world-ffmpeg-vc17
+
+     
+    - name: Prepare OpenCV Build Directory (if cache miss)
+      if: steps.cache-opencv.outputs.cache-hit != 'true'
+      run: mkdir opencv-install # Using mkdir for cmd shell consistency, -p is bash
+
+     
+    - name: Clone OpenCV (Windows)
+      if: steps.cache-opencv.outputs.cache-hit != 'true'
+      shell: cmd
+      working-directory: ./opencv-install
+      run: |
+        echo "Cloning OpenCV repositories into %CD%"
+        git clone --depth 1 --branch ${{ matrix.opencv-version }} https://github.com/opencv/opencv.git
+        git clone --depth 1 --branch ${{ matrix.opencv-version }} https://github.com/opencv/opencv_contrib.git
+
+    - name: Configure OpenCV (Windows)
+      if: steps.cache-opencv.outputs.cache-hit != 'true'
+      shell: cmd
+      run: |
+        echo "Configuring OpenCV with MSVC 2022"
+        mkdir opencv-install\build
+        cd opencv-install\build
+        call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        cmake -G "Visual Studio 17 2022" -A x64 ^
+          -DCMAKE_BUILD_TYPE=Release ^
+          -DBUILD_opencv_world=ON ^
+          -DWITH_FFMPEG=ON ^
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake ^
+          -DBUILD_EXAMPLES=OFF ^
+          -DBUILD_TESTS=OFF ^
+          -DBUILD_PERF_TESTS=OFF ^
+          -DOPENCV_EXTRA_MODULES_PATH=../opencv_contrib/modules ^
+          -DCMAKE_INSTALL_PREFIX=../install ^
+          ../opencv
+        cd ../..
+
+     
+    - name: Build and Install OpenCV (Windows)
+      if: steps.cache-opencv.outputs.cache-hit != 'true'
+      shell: cmd
+      run: |
+        echo "Building and installing OpenCV"
+        cd opencv-install\build
+        call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        msbuild INSTALL.vcxproj /p:Configuration=Release /m
+        if errorlevel 1 (
+          echo "msbuild failed"
+          exit /b 1
+        )
+        cd ../..
+        echo "Checking installation directory"
+        dir opencv-install\install\x64\vc17\bin
+        if not exist opencv-install\install\x64\vc17\bin (
+          echo "Installation directory opencv-install\install\x64\vc17\bin not found"
+          exit /b 1
+        )
+        dir opencv-install\install\lib\cmake\opencv4
+        if not exist opencv-install\install\lib\cmake\opencv4\OpenCVConfig.cmake (
+          echo "OpenCVConfig.cmake not found in opencv-install\install\lib\cmake\opencv4"
+          exit /b 1
+        )
+
+    
+    - name: Set OpenCV Environment Variables (Windows)
+      shell: bash # Using bash for GITHUB_ENV and path manipulation consistency
+      run: |
+        # OpenCV_DIR should point to the directory containing OpenCVConfig.cmake
+        echo "OpenCV_DIR=${{ github.workspace }}/opencv-install/install/lib/cmake/opencv4" >> $GITHUB_ENV
+        # Convert slashes for PATH on Windows
+        WIN_INSTALL_BIN_PATH=$(echo "${{ github.workspace }}/opencv-install/install/x64/vc17/bin" | sed 's/\//\\/g')
+        echo "PATH=${WIN_INSTALL_BIN_PATH};$PATH" >> $GITHUB_ENV
+
+    - name: Verify OpenCV Installation (Windows)
+      shell: bash 
+      run: |
+        echo "Verifying OpenCV_DIR: $OpenCV_DIR"
+        echo "OpenCV Version Info:"
+        if [ -f "${{ github.workspace }}/opencv-install/install/x64/vc17/bin/opencv_version.exe" ]; then
+          "${{ github.workspace }}/opencv-install/install/x64/vc17/bin/opencv_version.exe"
+        fi
+        ls -l "$OpenCV_DIR/OpenCVConfig.cmake"
+        echo "Verifying bin directory in PATH..."
+        ls -l "${{ github.workspace }}/opencv-install/install/x64/vc17/bin/"
+
+    - name: Package OpenCV Artifacts (Windows)
+      shell: powershell
+      run: |
+        Compress-Archive -Path ./opencv-install/install/* -DestinationPath opencv-world-${{ matrix.opencv-version }}-windows.zip -Force
+
+    
+    - name: Upload OpenCV Artifacts (Windows)
+      uses: actions/upload-artifact@v4
+      with:
+        name: opencv-world-${{ matrix.opencv-version }}-windows
+        path: opencv-world-${{ matrix.opencv-version }}-windows.zip
+        retention-days: 7
