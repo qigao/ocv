@@ -51,7 +51,6 @@ jobs:
           libavcodec-dev \
           libavformat-dev \
           libswscale-dev \
-          libtbb12-dev \
           libtbb-dev \
           libjpeg-dev \
           libpng-dev \
