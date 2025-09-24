@@ -61,6 +61,7 @@ jobs:
           -DCMAKE_CONFIGURATION_TYPES="Debug;Release" ^
           -DBUILD_opencv_world=ON ^
           -DWITH_FFMPEG=ON ^
+          -DWITH_OPENMP=ON ^
           -DBUILD_EXAMPLES=OFF ^
           -DBUILD_TESTS=OFF ^
           -DBUILD_PERF_TESTS=OFF ^
