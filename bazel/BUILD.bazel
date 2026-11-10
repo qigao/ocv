@@ -1,0 +1,65 @@
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
+
+config_setting(
+    name = "wasm",
+    define_values = {"ocv_wasm": "1"},
+)
+
+# Link imgproc before core when consuming static archives.
+MODULES = ["imgproc", "core"]
+
+cmake(
+    name = "opencv",
+    lib_source = "@qigao_opencv_source//:all",
+    cache_entries = {
+        "BUILD_LIST": "core,imgproc",
+        "BUILD_SHARED_LIBS": "OFF",
+        "BUILD_TESTS": "OFF",
+        "BUILD_PERF_TESTS": "OFF",
+        "BUILD_EXAMPLES": "OFF",
+        "BUILD_JAVA": "OFF",
+        "BUILD_opencv_apps": "OFF",
+        "BUILD_opencv_world": "OFF",
+        "CMAKE_POSITION_INDEPENDENT_CODE": "ON",
+        "WITH_EIGEN": "OFF",
+        "WITH_FFMPEG": "OFF",
+        "WITH_IPP": "OFF",
+        "WITH_ITT": "OFF",
+        "WITH_JPEG": "OFF",
+        "WITH_LAPACK": "OFF",
+        "WITH_OPENCL": "OFF",
+        "WITH_OPENMP": "OFF",
+        "WITH_PNG": "OFF",
+        "WITH_TBB": "OFF",
+        "WITH_TIFF": "OFF",
+        "WITH_VA": "OFF",
+        "WITH_WEBP": "OFF",
+    } | select({
+        "@platforms//os:android": {
+            "BUILD_ANDROID_PROJECTS": "OFF",
+            "OPENCV_LIB_ARCHIVE_INSTALL_PATH": "lib",
+            "WITH_CAROTENE": "OFF",
+            "WITH_KLEIDICV": "OFF",
+        },
+        "@platforms//os:windows": {
+            "BUILD_WITH_STATIC_CRT": "OFF",
+            "OPENCV_LIB_INSTALL_PATH": "lib",
+        },
+        ":wasm": {
+            "CMAKE_INSTALL_LIBDIR": "lib",
+            "CPU_BASELINE": "''",
+            "CPU_DISPATCH": "''",
+        },
+        "//conditions:default": {"CMAKE_INSTALL_LIBDIR": "lib"},
+    }),
+    out_include_dir = select({
+        "@platforms//os:android": "sdk/native/jni/include",
+        "@platforms//os:windows": "include",
+        "//conditions:default": "include/opencv4",
+    }),
+    out_static_libs = select({
+        "@platforms//os:windows": ["opencv_%s4110.lib" % module for module in MODULES],
+        "//conditions:default": ["libopencv_%s.a" % module for module in MODULES],
+    }),
+    visibility = ["//visibility:public"],
+)
