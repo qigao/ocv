@@ -37,6 +37,7 @@ cmake(
     } | select({
         "@platforms//os:android": {
             "BUILD_ANDROID_PROJECTS": "OFF",
+            "BUILD_ANDROID_EXAMPLES": "OFF",
             "OPENCV_LIB_ARCHIVE_INSTALL_PATH": "lib",
             "WITH_CAROTENE": "OFF",
             "WITH_KLEIDICV": "OFF",
