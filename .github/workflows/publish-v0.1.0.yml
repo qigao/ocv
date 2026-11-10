@@ -1,0 +1,234 @@
+name: Publish OCV SDK v0.1.0
+
+on:
+  push:
+    branches: [release/v0.1.0]
+    paths: ['.github/workflows/publish-v0.1.0.yml']
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: publish-ocv-v0.1.0
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.repository == 'qigao/ocv'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: v0.1.0
+      SOURCE_SHA: 10399faad8b79115ee1fc62729636737100cf978
+      CI_RUN: '42785543943'
+      OPENCV_VERSION: 4.11.0
+      STAGE: ${{ github.workspace }}/ocv-assets
+    steps:
+      - name: Verify and stage the eight CI packages
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import gzip
+          import hashlib
+          import io
+          import json
+          import os
+          from pathlib import Path, PurePosixPath
+          import shutil
+          import subprocess
+          import tarfile
+          import tempfile
+          import zipfile
+
+          def sha256(path):
+              with path.open("rb") as stream:
+                  return hashlib.file_digest(stream, "sha256").hexdigest()
+
+          def curl(url, output=None, authenticated=False):
+              args = ["curl", "-fsSL", "--retry", "3", "--max-time", "180"]
+              if authenticated:
+                  args += ["-H", "Authorization: Bearer " + os.environ["GH_TOKEN"]]
+              if output is not None:
+                  args += ["-o", str(output)]
+              return subprocess.check_output([*args, url])
+
+          def object_signature(obj):
+              if obj.startswith(b"\x7fELF\x02\x01"):
+                  return "ELF", int.from_bytes(obj[18:20], "little")
+              if obj.startswith(b"\xcf\xfa\xed\xfe"):
+                  return "Mach-O", int.from_bytes(obj[4:8], "little")
+              machine = obj[6:8] if obj.startswith(b"\x00\x00\xff\xff") else obj[:2]
+              return "COFF", int.from_bytes(machine, "little")
+
+          def check_package(package, scratch, cmake_dir, expected, license_bytes):
+              with tarfile.open(package, "r:gz") as archive:
+                  members = {m.name.removeprefix("./"): m for m in archive if m.isfile()}
+                  if cmake_dir / "OpenCVConfig.cmake" not in map(PurePosixPath, members):
+                      raise ValueError(f"{package.name} has no CMake package at {cmake_dir}")
+                  for module in ("core", "imgproc"):
+                      if not any(p.endswith(f"opencv2/{module}.hpp") for p in members):
+                          raise ValueError(f"{package.name} has no {module} header")
+                      library, = (
+                          m for p, m in members.items()
+                          if PurePosixPath(p).name in {f"libopencv_{module}.a", f"libopencv_{module}4110.a"}
+                      )
+                      library_path = scratch / PurePosixPath(library.name).name
+                      with archive.extractfile(library) as src, library_path.open("wb") as dst:
+                          shutil.copyfileobj(src, dst)
+                      first_object = subprocess.check_output(["ar", "t", library_path], text=True).splitlines()[0]
+                      obj = subprocess.check_output(["ar", "p", library_path, first_object])
+                      if object_signature(obj) != expected:
+                          raise ValueError(f"{package.name} has an unexpected {module} machine type")
+                  if "LICENSE" in members:
+                      with archive.extractfile(members["LICENSE"]) as source:
+                          if source.read() != license_bytes:
+                              raise ValueError(f"{package.name} has a different OpenCV license")
+                      return True
+              return False
+
+          def add_license(package, license_bytes):
+              output = package.with_suffix(".tmp")
+              with tarfile.open(package, "r:gz") as source, output.open("wb") as target:
+                  with gzip.GzipFile(filename="", mode="wb", fileobj=target, mtime=0) as compressed:
+                      with tarfile.open(fileobj=compressed, mode="w|") as archive:
+                          for member in source:
+                              if member.isfile():
+                                  with source.extractfile(member) as stream:
+                                      archive.addfile(member, stream)
+                              else:
+                                  archive.addfile(member)
+                          license_entry = tarfile.TarInfo("./LICENSE")
+                          license_entry.size = len(license_bytes)
+                          license_entry.mode = 0o644
+                          archive.addfile(license_entry, io.BytesIO(license_bytes))
+              output.replace(package)
+
+          stage = Path(os.environ["STAGE"])
+          stage.mkdir()
+          repo_api = f'{os.environ["GITHUB_API_URL"]}/repos/{os.environ["GITHUB_REPOSITORY"]}'
+          sha = os.environ["SOURCE_SHA"]
+          run_id = int(os.environ["CI_RUN"])
+          version = os.environ["OPENCV_VERSION"]
+          run_api = f"{repo_api}/actions/runs/{run_id}"
+          run = json.loads(curl(run_api, authenticated=True))
+          if (run["head_sha"], run["head_branch"], run["event"], run["conclusion"]) != (sha, "master", "push", "success"):
+              raise ValueError("The package run does not match the tested release commit")
+
+          # Compiler versions come from the successful package jobs in CI #9.
+          desktop_cmake = PurePosixPath("lib/cmake/opencv4")
+          android_cmake = PurePosixPath("sdk/native/jni")
+          windows_cmake = PurePosixPath(".")
+          platforms = {
+              "android-arm64": ("Clang 18.0.4, NDK 27.3.13750724", "arm64-v8a, API 26", android_cmake, ("ELF", 183)),
+              "android-x64": ("Clang 18.0.4, NDK 27.3.13750724", "x86_64, API 26", android_cmake, ("ELF", 62)),
+              "linux-arm64": ("Clang 18.1.3", "aarch64-linux-gnu", desktop_cmake, ("ELF", 183)),
+              "linux-x64": ("Clang 18.1.3", "x86_64-linux-gnu", desktop_cmake, ("ELF", 62)),
+              "macos-arm64": ("AppleClang 17.0.0.17000013", "arm64-apple-darwin", desktop_cmake, ("Mach-O", 0x100000C)),
+              "macos-x64": ("AppleClang 17.0.0.17000013", "x86_64-apple-darwin", desktop_cmake, ("Mach-O", 0x1000007)),
+              "windows-arm64": ("LLVM-MinGW 20261020, Clang 23.1.4", "aarch64-w64-mingw32, UCRT", windows_cmake, ("COFF", 0xAA64)),
+              "windows-x64": ("LLVM-MinGW 20261020, Clang 23.1.4", "x86_64-w64-mingw32, UCRT", windows_cmake, ("COFF", 0x8664)),
+          }
+          artifact_response = json.loads(curl(f"{run_api}/artifacts?per_page=100", authenticated=True))
+          artifacts = {item["name"]: item for item in artifact_response["artifacts"]}
+          if artifact_response["total_count"] != len(platforms) or set(artifacts) != {f"opencv-static-{p}" for p in platforms}:
+              raise ValueError("The package run does not contain the eight expected artifacts")
+
+          license_bytes = curl(f"https://raw.githubusercontent.com/opencv/opencv/{version}/LICENSE")
+          if hashlib.sha256(license_bytes).hexdigest() != "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30":
+              raise ValueError("Unexpected OpenCV license digest")
+
+          packages = []
+          with tempfile.TemporaryDirectory() as directory:
+              scratch = Path(directory)
+              zip_path = scratch / "artifact.zip"
+              for platform, (compiler, abi, cmake_dir, expected) in platforms.items():
+                  artifact = artifacts[f"opencv-static-{platform}"]
+                  if artifact["expired"]:
+                      raise ValueError(f"Expired package artifact for {platform}")
+                  curl(f'{repo_api}/actions/artifacts/{artifact["id"]}/zip', zip_path, authenticated=True)
+                  if f"sha256:{sha256(zip_path)}" != artifact["digest"]:
+                      raise ValueError(f"Unexpected CI artifact digest for {platform}")
+                  package = stage / f"opencv-{version}-static-{platform}.tar.gz"
+                  with zipfile.ZipFile(zip_path) as archive:
+                      member, = (m for m in archive.infolist() if not m.is_dir())
+                      if PurePosixPath(member.filename).name != package.name:
+                          raise ValueError(f"Unexpected archive filename for {platform}")
+                      with archive.open(member) as src, package.open("wb") as dst:
+                          shutil.copyfileobj(src, dst)
+                  ci_sha256 = sha256(package)
+                  has_license = check_package(package, scratch, cmake_dir, expected, license_bytes)
+                  if not has_license:
+                      add_license(package, license_bytes)
+                  packages.append({
+                      "file": package.name,
+                      "platform": platform,
+                      "compiler": compiler,
+                      "abi": abi,
+                      "cmake_dir": str(cmake_dir),
+                      "size_bytes": package.stat().st_size,
+                      "sha256": sha256(package),
+                      "ci_artifact_id": artifact["id"],
+                      "ci_package_sha256": ci_sha256,
+                      "license_added": not has_license,
+                  })
+                  print(f"Verified {package.name} for {abi}", flush=True)
+
+          manifest = stage / "manifest.json"
+          manifest.write_text(json.dumps({
+              "ocv_version": os.environ["RELEASE_TAG"].removeprefix("v"),
+              "opencv_version": version,
+              "source_commit": sha,
+              "ci_run_id": run_id,
+              "configuration": "Release",
+              "modules": ["core", "imgproc"],
+              "packages": packages,
+          }, indent=2) + "\n", encoding="utf-8")
+          files = [manifest, *stage.glob("*.tar.gz")]
+          (stage / "SHA256SUMS").write_text("".join(f"{sha256(p)}  {p.name}\n" for p in sorted(files)), encoding="utf-8")
+          PY
+      - name: Verify release assets in a draft and publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$STAGE"
+          sha256sum -c SHA256SUMS
+          tags=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$RELEASE_TAG" --jq '.[].ref')
+          test -z "$tags"
+
+          cat > "$RUNNER_TEMP/ocv-release-notes.md" <<'NOTES'
+          OCV SDK v0.1.0 packages OpenCV 4.11.0 `core` and `imgproc` as static Release libraries with headers and CMake package files.
+
+          Linux, macOS, Windows, and Android each have x64 and ARM64 archives. Windows uses LLVM-MinGW with UCRT. Android uses NDK 27.3.13750724 and targets API 26.
+
+          Verify the downloads with `SHA256SUMS`. See `manifest.json` for compiler and ABI details, the CMake package directory, and CI provenance. The Linux and macOS packages include the upstream OpenCV license alongside the binaries from CI.
+
+          Built from `10399faad8b79115ee1fc62729636737100cf978`. [OpenCV CI #9](https://github.com/qigao/ocv/actions/runs/42785543943)
+          NOTES
+          gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" \
+            --title "OCV SDK $RELEASE_TAG" --draft --notes-file "$RUNNER_TEMP/ocv-release-notes.md" \
+            ./*.tar.gz SHA256SUMS manifest.json
+
+          release_id=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json databaseId --jq .databaseId)
+          gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" > "$RUNNER_TEMP/ocv-release.json"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          release = json.loads((Path(os.environ["RUNNER_TEMP"]) / "ocv-release.json").read_text())
+          if not release["draft"] or release["target_commitish"] != os.environ["SOURCE_SHA"]:
+              raise ValueError("Unexpected draft release target")
+          files = {}
+          for path in Path(os.environ["STAGE"]).iterdir():
+              with path.open("rb") as stream:
+                  files[path.name] = (path.stat().st_size, "sha256:" + hashlib.file_digest(stream, "sha256").hexdigest())
+          assets = {a["name"]: (a["size"], a["digest"]) for a in release["assets"] if a["state"] == "uploaded"}
+          if assets != files:
+              raise ValueError("Uploaded release assets do not match the staged package set")
+          PY
+
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)" = "$SOURCE_SHA"
