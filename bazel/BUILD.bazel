@@ -1,0 +1,39 @@
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
+
+config_setting(
+    name = "wasm",
+    define_values = {"ocv_wasm": "1"},
+)
+
+# Link imgproc before core when consuming static archives.
+MODULES = ["imgproc", "core"]
+
+cmake(
+    name = "opencv",
+    lib_source = "@qigao_opencv_source//:all",
+    build_data = [":static-profile.cmake"],
+    build_args = ["--parallel", "2"],
+    env = {"OCV_STATIC_PROFILE": "$(execpath :static-profile.cmake)"},
+    generate_args = ["-C", "\"$OCV_STATIC_PROFILE\""],
+    cache_entries = select({
+        "@platforms//os:windows": {
+            "BUILD_WITH_STATIC_CRT": "OFF",
+            "OPENCV_LIB_INSTALL_PATH": "lib",
+        },
+        ":wasm": {
+            "CPU_BASELINE": "''",
+            "CPU_DISPATCH": "''",
+        },
+        "//conditions:default": {},
+    }),
+    out_include_dir = select({
+        "@platforms//os:android": "sdk/native/jni/include",
+        "@platforms//os:windows": "include",
+        "//conditions:default": "include/opencv4",
+    }),
+    out_static_libs = select({
+        "@platforms//os:windows": ["opencv_%s4110.lib" % module for module in MODULES],
+        "//conditions:default": ["libopencv_%s.a" % module for module in MODULES],
+    }),
+    visibility = ["//visibility:public"],
+)

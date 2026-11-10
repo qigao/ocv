@@ -1,0 +1,83 @@
+name: Build OpenCV SDK
+
+on:
+  workflow_call:
+    inputs:
+      profile:
+        type: string
+        required: true
+      platform:
+        type: string
+        required: true
+      runner:
+        type: string
+        required: true
+      arch:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and package
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 90
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/build-opencv/ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_MAXSIZE: 2G
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: qigao/vcpkg-cache/.github/actions/setup-ccache@v0.1.3
+      - uses: qigao/vcpkg-cache/.github/actions/setup-llvm-native@v0.1.3
+        id: native
+        if: startsWith(inputs.platform, 'linux-')
+      - uses: qigao/vcpkg-cache/.github/actions/setup-llvm-mingw@v0.1.3
+        id: mingw
+        if: runner.os == 'Windows'
+        with:
+          target: ${{ inputs.arch }}
+          build-type: toolchain-only
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            build-opencv/ccache
+            build-opencv/downloads
+          key: opencv-${{ inputs.profile }}-${{ inputs.platform }}-${{ hashFiles('scripts/build-opencv.py', 'bazel/static-profile.cmake', '.github/workflows/build-opencv.yml') }}
+          restore-keys: opencv-${{ inputs.profile }}-${{ inputs.platform }}-
+      - name: Install Linux World dependencies
+        if: inputs.profile == 'world' && runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libavcodec-dev libavformat-dev libswscale-dev libavutil-dev \
+            libomp-dev libtbb-dev libgtk-3-dev libjpeg-dev libpng-dev libtiff-dev
+      - name: Build and package OpenCV
+        shell: bash
+        env:
+          PLATFORM: ${{ inputs.platform }}
+          PROFILE: ${{ inputs.profile }}
+          TOOLCHAIN: ${{ steps.mingw.outputs.toolchain-file || steps.native.outputs.toolchain-file }}
+          CC: clang
+          CXX: clang++
+        run: |
+          set -euo pipefail
+          args=("$PLATFORM" --profile "$PROFILE" --ccache)
+          if [[ -n "$TOOLCHAIN" ]]; then
+            args+=(--toolchain "$TOOLCHAIN")
+          fi
+          if [[ "$PLATFORM" == android-* ]]; then
+            export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.3.13750724"
+          fi
+          python -B scripts/build-opencv.py "${args[@]}"
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: opencv-${{ inputs.profile }}-${{ inputs.platform }}
+          path: build-opencv/opencv-*.tar.gz
+          if-no-files-found: error
+          compression-level: 0
