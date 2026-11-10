@@ -12,7 +12,8 @@ cmake(
     name = "opencv",
     lib_source = "@qigao_opencv_source//:all",
     build_data = [":static-profile.cmake"],
-    env = {"OCV_STATIC_PROFILE": "$(location :static-profile.cmake)"},
+    build_args = ["--parallel", "2"],
+    env = {"OCV_STATIC_PROFILE": "$(execpath :static-profile.cmake)"},
     generate_args = ["-C", "\"$OCV_STATIC_PROFILE\""],
     cache_entries = select({
         "@platforms//os:windows": {

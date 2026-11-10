@@ -67,14 +67,14 @@ jobs:
           CXX: clang++
         run: |
           set -euo pipefail
-          args=()
+          args=("$PLATFORM" --profile "$PROFILE" --ccache)
           if [[ -n "$TOOLCHAIN" ]]; then
             args+=(--toolchain "$TOOLCHAIN")
           fi
           if [[ "$PLATFORM" == android-* ]]; then
             export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.3.13750724"
           fi
-          python -B scripts/build-opencv.py "$PLATFORM" --profile "$PROFILE" --ccache "${args[@]}"
+          python -B scripts/build-opencv.py "${args[@]}"
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: opencv-${{ inputs.profile }}-${{ inputs.platform }}
