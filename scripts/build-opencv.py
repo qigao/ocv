@@ -74,6 +74,8 @@ def configuration(args, out):
 
     if args.profile == "shared":
         flags.append("-DBUILD_SHARED_LIBS=ON")
+        if args.platform.startswith("android-"):
+            flags += ["-DANDROID_STL=c++_shared", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"]
     if args.profile in {"static", "shared"}:
         return ["-C", REPO / "bazel/static-profile.cmake", *flags]
     contrib = extract_source(out, "opencv_contrib")

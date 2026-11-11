@@ -2,7 +2,7 @@
 
 OpenCV CI builds the static `core` and `imgproc` SDK for Linux, macOS, Windows, and Android on x64 and ARM64. It uses the vcpkg-cache compiler and ccache setup, Apple Clang on macOS, and the NDK toolchain on Android. Windows also builds MSVC SDKs with the DLL runtime (`/MD`) as `windows-x64-msvc` and `windows-arm64-msvc` artifacts.
 
-The `shared` profile builds `core` and `imgproc` DLLs and their import libraries for Windows x64 and ARM64 with both LLVM-MinGW and MSVC. Select the archive for your compiler's C++ ABI.
+The `shared` profile builds the `core` and `imgproc` shared libraries on the same platforms. Windows archives include DLLs and import libraries for LLVM-MinGW and MSVC. Select the archive for your compiler's C++ ABI.
 
 Run the workflow with `profile=world` to build OpenCV World with FFmpeg and contrib modules for Linux or Windows x64. The World archives contain separate `Debug/` and `Release/` SDKs. Windows World builds use LLVM-MinGW.
 
