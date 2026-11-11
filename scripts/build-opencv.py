@@ -69,8 +69,14 @@ def configuration(args, out):
         flags += [f"-DCMAKE_TOOLCHAIN_FILE={toolchain.resolve()}", f"-DANDROID_ABI={abi}", "-DANDROID_PLATFORM=android-26"]
     elif args.toolchain:
         flags.append(f"-DCMAKE_TOOLCHAIN_FILE={args.toolchain.resolve()}")
+    elif args.platform.endswith("-msvc"):
+        flags += ["-DCMAKE_C_COMPILER=cl", "-DCMAKE_CXX_COMPILER=cl", "-DBUILD_WITH_STATIC_CRT=OFF"]
 
-    if args.profile == "static":
+    if args.profile == "shared":
+        flags.append("-DBUILD_SHARED_LIBS=ON")
+        if args.platform.startswith("android-"):
+            flags += ["-DANDROID_STL=c++_shared", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"]
+    if args.profile in {"static", "shared"}:
         return ["-C", REPO / "bazel/static-profile.cmake", *flags]
     contrib = extract_source(out, "opencv_contrib")
     if args.platform == "windows-x64":
@@ -93,12 +99,14 @@ def configuration(args, out):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("platform")
-    parser.add_argument("--profile", choices=["static", "world"], default="static")
+    parser.add_argument("--profile", choices=["static", "shared", "world"], default="static")
     parser.add_argument("--out", type=Path, default=Path("build-opencv"))
     parser.add_argument("--toolchain", type=Path)
     parser.add_argument("--jobs", type=int, default=4)
     parser.add_argument("--ccache", action="store_true")
     args = parser.parse_args()
+    if args.platform.endswith("-msvc") and (args.profile == "world" or args.toolchain):
+        parser.error("MSVC builds require a Lite profile and a Visual Studio developer shell")
 
     out = args.out.resolve()
     source = extract_source(out, "opencv")

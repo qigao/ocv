@@ -9,7 +9,7 @@ on:
       profile:
         description: OpenCV build profile
         type: choice
-        options: [static, world, all]
+        options: [static, shared, world, all]
         default: static
 
 permissions:
@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   static:
-    if: inputs.profile != 'world'
+    if: inputs.profile != 'world' && inputs.profile != 'shared'
     name: Static / ${{ matrix.platform }}
     strategy:
       fail-fast: false
@@ -33,11 +33,37 @@ jobs:
           - { platform: macos-arm64, runner: macos-15 }
           - { platform: windows-x64, runner: windows-2025, arch: x64 }
           - { platform: windows-arm64, runner: windows-11-arm, arch: arm64 }
+          - { platform: windows-x64-msvc, runner: windows-2025, arch: x64 }
+          - { platform: windows-arm64-msvc, runner: windows-11-arm, arch: arm64 }
           - { platform: android-x64, runner: ubuntu-24.04 }
           - { platform: android-arm64, runner: ubuntu-24.04 }
     uses: ./.github/workflows/build-opencv.yml
     with:
       profile: static
+      platform: ${{ matrix.platform }}
+      runner: ${{ matrix.runner }}
+      arch: ${{ matrix.arch || '' }}
+
+  shared:
+    if: inputs.profile == '' || inputs.profile == 'shared' || inputs.profile == 'all'
+    name: Shared / ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-x64, runner: ubuntu-24.04 }
+          - { platform: linux-arm64, runner: ubuntu-24.04-arm }
+          - { platform: macos-x64, runner: macos-15-intel }
+          - { platform: macos-arm64, runner: macos-15 }
+          - { platform: android-x64, runner: ubuntu-24.04 }
+          - { platform: android-arm64, runner: ubuntu-24.04 }
+          - { platform: windows-x64, runner: windows-2025, arch: x64 }
+          - { platform: windows-arm64, runner: windows-11-arm, arch: arm64 }
+          - { platform: windows-x64-msvc, runner: windows-2025, arch: x64 }
+          - { platform: windows-arm64-msvc, runner: windows-11-arm, arch: arm64 }
+    uses: ./.github/workflows/build-opencv.yml
+    with:
+      profile: shared
       platform: ${{ matrix.platform }}
       runner: ${{ matrix.runner }}
       arch: ${{ matrix.arch || '' }}
