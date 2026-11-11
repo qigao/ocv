@@ -4,6 +4,8 @@ OpenCV CI builds the static `core` and `imgproc` SDK for Linux, macOS, Windows, 
 
 The `shared` profile builds the `core` and `imgproc` shared libraries on the same platforms. Windows archives include DLLs and import libraries for LLVM-MinGW and MSVC. Select the archive for your compiler's C++ ABI.
 
+A version tag publishes the static and shared OpenCVLite archives and their `SHA256SUMS` after the full matrix passes. The Windows MSVC packages include `-msvc` in the archive name.
+
 Run the workflow with `profile=world` to build OpenCV World with FFmpeg and contrib modules for Linux or Windows x64. The World archives contain separate `Debug/` and `Release/` SDKs. Windows World builds use LLVM-MinGW.
 
 The Bazel profile in `bazel/` builds the OpenCV 4.11.0 `core` and `imgproc` static libraries for GDMP. Bazel and the native CI use the same [static CMake profile](bazel/static-profile.cmake).
