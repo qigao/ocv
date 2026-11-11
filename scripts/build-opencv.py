@@ -69,6 +69,8 @@ def configuration(args, out):
         flags += [f"-DCMAKE_TOOLCHAIN_FILE={toolchain.resolve()}", f"-DANDROID_ABI={abi}", "-DANDROID_PLATFORM=android-26"]
     elif args.toolchain:
         flags.append(f"-DCMAKE_TOOLCHAIN_FILE={args.toolchain.resolve()}")
+    elif args.platform.endswith("-msvc"):
+        flags += ["-DCMAKE_C_COMPILER=cl", "-DCMAKE_CXX_COMPILER=cl", "-DBUILD_WITH_STATIC_CRT=OFF"]
 
     if args.profile == "static":
         return ["-C", REPO / "bazel/static-profile.cmake", *flags]
@@ -99,6 +101,8 @@ def main():
     parser.add_argument("--jobs", type=int, default=4)
     parser.add_argument("--ccache", action="store_true")
     args = parser.parse_args()
+    if args.platform.endswith("-msvc") and (args.profile != "static" or args.toolchain):
+        parser.error("MSVC builds require the static profile and a Visual Studio developer shell")
 
     out = args.out.resolve()
     source = extract_source(out, "opencv")
